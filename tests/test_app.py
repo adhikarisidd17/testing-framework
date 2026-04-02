@@ -17,6 +17,14 @@ def test_handshake_echoes_verification_code() -> None:
     assert response.json() == {"verification_code": "abc123"}
 
 
+
+
+def test_handshake_echoes_nested_verification_code() -> None:
+    response = client.post("/statsig/webhook", json={"data": {"verification_code": "nested-456"}})
+    assert response.status_code == 200
+    assert response.json() == {"verification_code": "nested-456"}
+
+
 def test_event_payload_is_parsed() -> None:
     payload = {
         "type": "experiment_assignment",

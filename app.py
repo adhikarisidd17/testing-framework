@@ -31,6 +31,19 @@ def _compute_sha256_signature(secret: str, raw_body: bytes) -> str:
     return f"sha256={digest}"
 
 
+def _extract_verification_code(payload: dict[str, Any]) -> str | None:
+    direct = payload.get("verification_code")
+    if isinstance(direct, str) and direct:
+        return direct
+
+    data = payload.get("data")
+    if isinstance(data, dict):
+        nested = data.get("verification_code")
+        if isinstance(nested, str) and nested:
+            return nested
+
+    return None
+
 @app.get("/healthz")
 def healthz() -> dict[str, str]:
     return {"status": "ok"}
@@ -57,9 +70,13 @@ async def statsig_webhook(
     except json.JSONDecodeError as exc:
         raise HTTPException(status_code=400, detail="Invalid JSON payload") from exc
 
-    # Handshake path: echo the verification_code if present.
-    verification_code = payload.get("verification_code")
-    if isinstance(verification_code, str) and verification_code:
+    logger.info("Received Statsig payload", extra={"payload": payload})
+
+    # Handshake path: extract and echo verification_code if present.
+    verification_code = _extract_verification_code(payload)
+    if verification_code:
+        print(f"Received Statsig verification_code: {verification_code}")
+        logger.info("Received Statsig verification_code", extra={"verification_code": verification_code})
         return JSONResponse(status_code=200, content={"verification_code": verification_code})
 
     # Event path: parse and log the event data from Statsig.
