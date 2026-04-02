@@ -1,0 +1,23 @@
+[project]
+name = "statsig-webhook-receiver"
+version = "0.1.0"
+description = "Statsig webhook receiver for handshake verification and event ingestion"
+readme = "README.md"
+requires-python = ">=3.10,<4.0"
+authors = [{ name = "Codex", email = "codex@example.com" }]
+dependencies = [
+  "fastapi==0.115.0",
+  "uvicorn[standard]==0.30.6",
+  "pydantic==2.9.2",
+]
+
+[tool.poetry]
+package-mode = false
+
+[tool.poetry.group.dev.dependencies]
+pytest = "8.3.3"
+httpx = "0.27.2"
+
+[build-system]
+requires = ["poetry-core>=1.8.0"]
+build-backend = "poetry.core.masonry.api"
