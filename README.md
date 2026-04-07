@@ -29,8 +29,9 @@ When a Statsig handshake payload is received (`verification_code`), the service 
 1. Extracts request content.
 2. Extracts experiment id from payload (`id`, `experiment_id`, `experimentId`, `name`, or `data[].metadata.name`) and calls `https://statsigapi.net/console/v1/experiments/<id>` (if `STATSIG_CONSOLE_API_KEY` is set).
 3. Builds a Slack-formatted message from experiment data (Control/Test groups + primary metric).
-4. Prints the Slack message to console (preview only, no channel send).
-5. Returns `{ "verification_code": "..." }` to complete handshake.
+4. Formats a JSON payload and sends it to Slack Incoming Webhook.
+5. Uses `SLACK_WEBHOOK_URL` when set; otherwise falls back to the default webhook configured in code.
+6. Returns `{ "verification_code": "..." }` to complete handshake.
 
 ---
 
@@ -42,6 +43,7 @@ When a Statsig handshake payload is received (`verification_code`), the service 
 - [Poetry](https://python-poetry.org/docs/#installation)
 - `STATSIG_CONSOLE_API_KEY` (required to fetch experiment details during handshake)
 - `STATSIG_PROJECT_ID` (optional, used to build experiment URL)
+- `SLACK_WEBHOOK_URL` (optional override for the default configured Slack Incoming Webhook)
 - `REQUIRE_VERIFICATION_CODE` (optional, default `false`; when `true`, skips Statsig API call unless verification code exists)
 - `STATSIG_API_VERSION` (optional, default `20240601`)
 
@@ -230,4 +232,3 @@ If you see `POST /slack/events 404`, your sender is targeting `/slack/events` wh
    export STATSIG_CONSOLE_API_KEY="<your-read-only-key>"
    export STATSIG_PROJECT_ID="<your-project-id>"
    ```
-

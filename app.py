@@ -16,6 +16,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("statsig-webhook")
 
 STATSIG_EXPERIMENTS_BASE_URL = "https://statsigapi.net/console/v1/experiments"
+DEFAULT_SLACK_WEBHOOK_URL = "https://hooks.slack.com/services/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"
 
 
 def _load_secret() -> str:
@@ -142,92 +143,28 @@ def _normalize_experiment_payload(raw: dict[str, Any]) -> dict[str, Any]:
 
     return normalized
 
-def _format_slack_message(experiment: dict[str, Any], project_id: str | None) -> dict[str, Any]:
-    name = experiment.get("name") if isinstance(experiment.get("name"), str) else "N/A"
-    hypothesis = _sanitize_hypothesis(experiment.get("hypothesis"))
-    team = experiment.get("team") if isinstance(experiment.get("team"), str) else "N/A"
+def _build_slack_payload(experiment: dict[str, Any]) -> dict[str, Any]:
+    # Send the experiment as JSON text payload to Slack.
+    return {"text": json.dumps(experiment, indent=2, default=str)}
 
-    primary_metrics = experiment.get("primaryMetrics")
-    primary_metric_name = "N/A"
-    if isinstance(primary_metrics, list) and primary_metrics:
-        first_metric = primary_metrics[0]
-        if isinstance(first_metric, dict):
-            metric_name = first_metric.get("name")
-            if isinstance(metric_name, str) and metric_name:
-                primary_metric_name = metric_name
 
-    groups = experiment.get("groups")
-    control_description = _find_group_description(groups, "Control")
-    test_description = _find_group_description(groups, "Test")
+async def _send_slack_message(slack_payload: dict[str, Any]) -> bool:
+    """Send JSON payload to Slack Incoming Webhook if configured."""
+    webhook_url = os.getenv("SLACK_WEBHOOK_URL", DEFAULT_SLACK_WEBHOOK_URL)
+    if not webhook_url:
+        logger.info("SLACK_WEBHOOK_URL is not set; skipping Slack send and printing preview")
+        return False
 
-    experiment_url = _build_experiment_url(project_id, name)
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        response = await client.post(webhook_url, json=slack_payload)
+        response.raise_for_status()
 
-    return {
-        "blocks": [
-            {
-                "type": "header",
-                "text": {
-                    "type": "plain_text",
-                    "text": ":rocket: Experiment Started :rocket:",
-                    "emoji": True,
-                },
-            },
-            {
-                "type": "header",
-                "text": {
-                    "type": "plain_text",
-                    "text": name,
-                    "emoji": True,
-                },
-            },
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": (
-                        f"*Hypothesis:* {hypothesis}\n"
-                        f"*Primary metric*: {primary_metric_name}\n"
-                        f"*Team*: {team}"
-                    ),
-                },
-            },
-            {"type": "divider"},
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": f"*Baseline*\n{control_description}",
-                },
-            },
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": f"*Variation*\n{test_description}",
-                },
-            },
-            {"type": "divider"},
-            {
-                "type": "actions",
-                "elements": [
-                    {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "text": "View Experiment",
-                            "emoji": True,
-                        },
-                        "url": experiment_url,
-                        "action_id": "view_experiment",
-                    }
-                ],
-            },
-        ]
-    }
+    logger.info("Sent Slack message successfully")
+    return True
 
 
 async def _fetch_statsig_experiment(handshake_payload: dict[str, Any]) -> dict[str, Any] | None:
-    api_key = os.getenv("STATSIG_CONSOLE_API_KEY")
+    api_key = os.getenv("STATSIG_CONSOLE_API_KEY","console-2tvTdXLIF121Z8BlQlFwBcACslpQdeqAJ3jvbg7Y81B")
     if not api_key:
         logger.warning("STATSIG_CONSOLE_API_KEY is not set; skipping console API fetch")
         return None
@@ -301,15 +238,19 @@ async def _handle_statsig_webhook(request: Request, x_statsig_signature: str | N
         try:
             experiment = await _fetch_statsig_experiment(payload)
             if experiment:
-                project_id = os.getenv("STATSIG_PROJECT_ID")
-                slack_message = _format_slack_message(experiment, project_id)
-                print("\n--- Slack Message Preview ---")
-                print(json.dumps(slack_message, indent=2, default=str))
-                print("--- End Slack Message Preview ---\n")
+                # Keep payload JSON-oriented (no Block Kit).
+                if "hypothesis" in experiment:
+                    experiment["hypothesis"] = _sanitize_hypothesis(experiment.get("hypothesis"))
+                slack_message = _build_slack_payload(experiment)
+                message_sent = await _send_slack_message(slack_message)
+                if not message_sent:
+                    print("\n--- Slack Message Preview ---")
+                    print(json.dumps(slack_message, indent=2, default=str))
+                    print("--- End Slack Message Preview ---\n")
             else:
                 logger.warning("No experiment data available from Statsig console API")
         except httpx.HTTPError as exc:
-            logger.exception("Failed to fetch experiment data from Statsig console API: %s", exc)
+            logger.exception("Failed to fetch/send Statsig->Slack flow: %s", exc)
 
     if verification_code:
         return JSONResponse(status_code=200, content={"verification_code": verification_code})
