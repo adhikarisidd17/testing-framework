@@ -118,6 +118,81 @@ def _sanitize_hypothesis(hypothesis: Any) -> str:
     return hypothesis.replace("`", "")
 
 
+def _extract_project_id(value: Any) -> str | None:
+    if isinstance(value, dict):
+        for key in ("projectID", "projectId", "project_id"):
+            candidate = value.get(key)
+            if isinstance(candidate, str) and candidate:
+                return candidate
+        for nested in value.values():
+            found = _extract_project_id(nested)
+            if found:
+                return found
+    elif isinstance(value, list):
+        for item in value:
+            found = _extract_project_id(item)
+            if found:
+                return found
+    return None
+
+
+def _extract_primary_metric(experiment: dict[str, Any]) -> str:
+    metrics = experiment.get("primaryMetrics")
+    if isinstance(metrics, list):
+        for metric in metrics:
+            if isinstance(metric, dict):
+                name = metric.get("name")
+                if isinstance(name, str) and name:
+                    return name
+            elif isinstance(metric, str) and metric:
+                return metric
+    return "N/A"
+
+
+def _format_slack_message(experiment: dict[str, Any], project_id: str | None = None) -> dict[str, Any]:
+    name = experiment.get("name") if isinstance(experiment.get("name"), str) else "N/A"
+    hypothesis = _sanitize_hypothesis(experiment.get("hypothesis"))
+    metric_name = _extract_primary_metric(experiment)
+    team = experiment.get("team") if isinstance(experiment.get("team"), str) else "N/A"
+    groups = experiment.get("groups")
+    baseline = _find_group_description(groups, "Control")
+    variation = _find_group_description(groups, "Test")
+    resolved_project_id = project_id or _extract_project_id(experiment)
+    experiment_url = _build_experiment_url(resolved_project_id, name)
+
+    hypothesis_text = (
+        f"*Hypothesis:* {hypothesis}\n\n"
+        f"*Primary metric:* {metric_name}\n"
+        f"Team: {team}"
+    )
+
+    return {
+        "text": f"Experiment started: {name}",
+        "blocks": [
+            {
+                "type": "header",
+                "text": {"type": "plain_text", "text": ":rocket: Experiment Started :rocket:", "emoji": True},
+            },
+            {"type": "header", "text": {"type": "plain_text", "text": name, "emoji": True}},
+            {"type": "section", "text": {"type": "mrkdwn", "text": hypothesis_text}},
+            {"type": "divider"},
+            {"type": "section", "text": {"type": "mrkdwn", "text": f"*Baseline*\n{baseline}"}},
+            {"type": "section", "text": {"type": "mrkdwn", "text": f"*Variation*\n{variation}"}},
+            {"type": "divider"},
+            {
+                "type": "actions",
+                "elements": [
+                    {
+                        "type": "button",
+                        "text": {"type": "plain_text", "text": "View Experiment", "emoji": True},
+                        "url": experiment_url,
+                        "action_id": "view_experiment",
+                    }
+                ],
+            },
+        ]
+    }
+
 
 
 def _normalize_experiment_payload(raw: dict[str, Any]) -> dict[str, Any]:
@@ -143,9 +218,9 @@ def _normalize_experiment_payload(raw: dict[str, Any]) -> dict[str, Any]:
 
     return normalized
 
-def _build_slack_payload(experiment: dict[str, Any]) -> dict[str, Any]:
-    # Send the experiment as JSON text payload to Slack.
-    return {"text": json.dumps(experiment, indent=2, default=str)}
+def _build_slack_payload(experiment: dict[str, Any], handshake_payload: dict[str, Any]) -> dict[str, Any]:
+    project_id = _extract_project_id(experiment) or _extract_project_id(handshake_payload)
+    return _format_slack_message(experiment, project_id)
 
 
 async def _send_slack_message(slack_payload: dict[str, Any]) -> bool:
@@ -239,9 +314,7 @@ async def _handle_statsig_webhook(request: Request, x_statsig_signature: str | N
             experiment = await _fetch_statsig_experiment(payload)
             if experiment:
                 # Keep payload JSON-oriented (no Block Kit).
-                if "hypothesis" in experiment:
-                    experiment["hypothesis"] = _sanitize_hypothesis(experiment.get("hypothesis"))
-                slack_message = _build_slack_payload(experiment)
+                slack_message = _build_slack_payload(experiment, payload)
                 message_sent = await _send_slack_message(slack_message)
                 if not message_sent:
                     print("\n--- Slack Message Preview ---")
