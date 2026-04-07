@@ -95,3 +95,19 @@ def test_extract_experiment_id_from_nested_payload() -> None:
 def test_extract_experiment_id_from_top_level_payload() -> None:
     payload = {"id": "exp_123"}
     assert webhook_app._extract_experiment_id(payload) == "exp_123"
+
+
+
+def test_extract_experiment_id_from_statsig_metadata_payload() -> None:
+    payload = {
+        "data": [
+            {
+                "metadata": {
+                    "projectID": "jQzdlAawJ6o27HMDlUbxv",
+                    "type": "Experiment",
+                    "name": "webhook_test",
+                }
+            }
+        ]
+    }
+    assert webhook_app._extract_experiment_id(payload) == "webhook_test"

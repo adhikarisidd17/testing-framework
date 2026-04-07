@@ -27,7 +27,7 @@ This service exposes a public webhook endpoint that:
 When a Statsig handshake payload is received (`verification_code`), the service now:
 
 1. Extracts request content.
-2. Extracts experiment id from payload (`id`, `experiment_id`, `experimentId`, or `name`) and calls `https://statsigapi.net/console/v1/experiments/<id>` (if `STATSIG_CONSOLE_API_KEY` is set).
+2. Extracts experiment id from payload (`id`, `experiment_id`, `experimentId`, `name`, or `data[].metadata.name`) and calls `https://statsigapi.net/console/v1/experiments/<id>` (if `STATSIG_CONSOLE_API_KEY` is set).
 3. Builds a Slack-formatted message from experiment data (Control/Test groups + primary metric).
 4. Prints the Slack message to console (preview only, no channel send).
 5. Returns `{ "verification_code": "..." }` to complete handshake.

@@ -59,6 +59,24 @@ def _extract_experiment_id(payload: dict[str, Any]) -> str | None:
             if isinstance(value, str) and value:
                 return value
 
+    # Statsig event payloads can be arrays under `data` with metadata block.
+    if isinstance(data, list):
+        for event in data:
+            if not isinstance(event, dict):
+                continue
+            metadata = event.get("metadata")
+            if not isinstance(metadata, dict):
+                continue
+            # Prefer an explicit experiment identifier when present.
+            explicit_id = metadata.get("experimentID") or metadata.get("experimentId") or metadata.get("id")
+            if isinstance(explicit_id, str) and explicit_id:
+                return explicit_id
+
+            # Fallback to metadata.name, e.g. `webhook_test`.
+            event_name = metadata.get("name")
+            if isinstance(event_name, str) and event_name:
+                return event_name
+
     return None
 
 
