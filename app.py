@@ -110,6 +110,31 @@ def _sanitize_hypothesis(hypothesis: Any) -> str:
     return hypothesis.replace("`", "")
 
 
+
+
+def _normalize_experiment_payload(raw: dict[str, Any]) -> dict[str, Any]:
+    """Normalize Statsig API payload variants to expected experiment shape."""
+    # Common wrappers: {"data": {...}} or {"data": [{...}]}
+    candidate: Any = raw
+    data = raw.get("data")
+    if isinstance(data, dict):
+        candidate = data
+    elif isinstance(data, list) and data and isinstance(data[0], dict):
+        candidate = data[0]
+
+    if not isinstance(candidate, dict):
+        return raw
+
+    normalized = dict(candidate)
+
+    # Normalize alternate key names.
+    if "primaryMetrics" not in normalized and isinstance(normalized.get("primary_metrics"), list):
+        normalized["primaryMetrics"] = normalized["primary_metrics"]
+    if "groups" not in normalized and isinstance(normalized.get("variants"), list):
+        normalized["groups"] = normalized["variants"]
+
+    return normalized
+
 def _format_slack_message(experiment: dict[str, Any], project_id: str | None) -> str:
     name = experiment.get("name") if isinstance(experiment.get("name"), str) else "N/A"
     hypothesis = _sanitize_hypothesis(experiment.get("hypothesis"))
@@ -170,7 +195,10 @@ async def _fetch_statsig_experiment(handshake_payload: dict[str, Any]) -> dict[s
         api_payload: Any = response.json()
 
     if isinstance(api_payload, dict):
-        return api_payload
+        print("\n--- Raw Statsig Experiment API Payload ---")
+        print(json.dumps(api_payload, indent=2, default=str))
+        print("--- End Raw Statsig Experiment API Payload ---\n")
+        return _normalize_experiment_payload(api_payload)
     return None
 
 

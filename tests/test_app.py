@@ -111,3 +111,17 @@ def test_extract_experiment_id_from_statsig_metadata_payload() -> None:
         ]
     }
     assert webhook_app._extract_experiment_id(payload) == "webhook_test"
+
+
+
+def test_normalize_experiment_payload_from_data_wrapper() -> None:
+    raw = {"data": {"name": "webhook_test", "hypothesis": "h1", "team": "Growth"}}
+    normalized = webhook_app._normalize_experiment_payload(raw)
+    assert normalized["name"] == "webhook_test"
+
+
+def test_normalize_experiment_payload_from_data_list_wrapper() -> None:
+    raw = {"data": [{"name": "webhook_test", "primary_metrics": [{"name": "signup"}]}]}
+    normalized = webhook_app._normalize_experiment_payload(raw)
+    assert normalized["name"] == "webhook_test"
+    assert normalized["primaryMetrics"][0]["name"] == "signup"

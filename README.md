@@ -220,6 +220,7 @@ If you see `POST /slack/events 404`, your sender is targeting `/slack/events` wh
    - `Incoming webhook`
    - `Received Statsig payload`
    - `Calling Statsig experiments API`
+   - `--- Raw Statsig Experiment API Payload ---`
    - `--- Slack Message Preview ---`
 4. If API is not being called, check for warnings:
    - `Request missing verification_code and REQUIRE_VERIFICATION_CODE=true; skipping Statsig API call`
