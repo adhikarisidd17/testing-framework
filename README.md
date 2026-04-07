@@ -27,7 +27,7 @@ This service exposes a public webhook endpoint that:
 When a Statsig handshake payload is received (`verification_code`), the service now:
 
 1. Extracts request content.
-2. Calls `https://statsigapi.net/console/v1/experiments/` (if `STATSIG_CONSOLE_API_KEY` is set).
+2. Extracts experiment id from payload (`id`, `experiment_id`, `experimentId`, or `name`) and calls `https://statsigapi.net/console/v1/experiments/<id>` (if `STATSIG_CONSOLE_API_KEY` is set).
 3. Builds a Slack-formatted message from experiment data (Control/Test groups + primary metric).
 4. Prints the Slack message to console (preview only, no channel send).
 5. Returns `{ "verification_code": "..." }` to complete handshake.
@@ -43,6 +43,7 @@ When a Statsig handshake payload is received (`verification_code`), the service 
 - `STATSIG_CONSOLE_API_KEY` (required to fetch experiment details during handshake)
 - `STATSIG_PROJECT_ID` (optional, used to build experiment URL)
 - `REQUIRE_VERIFICATION_CODE` (optional, default `false`; when `true`, skips Statsig API call unless verification code exists)
+- `STATSIG_API_VERSION` (optional, default `20240601`)
 
 ### 1) Install dependencies
 
@@ -220,8 +221,9 @@ If you see `POST /slack/events 404`, your sender is targeting `/slack/events` wh
    - `Received Statsig payload`
    - `Calling Statsig experiments API`
    - `--- Slack Message Preview ---`
-4. If API is not being called, check for warning:
+4. If API is not being called, check for warnings:
    - `Request missing verification_code and REQUIRE_VERIFICATION_CODE=true; skipping Statsig API call`
+   - `No experiment id found in payload; skipping console API fetch`
 5. Ensure env vars are present:
    ```bash
    export STATSIG_CONSOLE_API_KEY="<your-read-only-key>"

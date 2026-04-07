@@ -84,3 +84,14 @@ def test_non_handshake_with_required_verification_code() -> None:
         assert response.json()["debug"] == "verification_code required but missing"
     finally:
         os.environ.pop("REQUIRE_VERIFICATION_CODE", None)
+
+
+
+def test_extract_experiment_id_from_nested_payload() -> None:
+    payload = {"data": {"experiment_id": "webhook_test"}}
+    assert webhook_app._extract_experiment_id(payload) == "webhook_test"
+
+
+def test_extract_experiment_id_from_top_level_payload() -> None:
+    payload = {"id": "exp_123"}
+    assert webhook_app._extract_experiment_id(payload) == "exp_123"

@@ -15,7 +15,7 @@ app = FastAPI(title="Statsig Webhook Receiver", version="1.0.0")
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("statsig-webhook")
 
-STATSIG_EXPERIMENTS_URL = "https://statsigapi.net/console/v1/experiments/"
+STATSIG_EXPERIMENTS_BASE_URL = "https://statsigapi.net/console/v1/experiments"
 
 
 def _load_secret() -> str:
@@ -44,43 +44,22 @@ def _extract_verification_code(payload: dict[str, Any]) -> str | None:
     return None
 
 
-def _extract_target_experiment_name(handshake_payload: dict[str, Any]) -> str | None:
-    top_level_name = handshake_payload.get("name")
-    if isinstance(top_level_name, str) and top_level_name:
-        return top_level_name
+def _extract_experiment_id(payload: dict[str, Any]) -> str | None:
+    candidate_keys = ["id", "experiment_id", "experimentId", "name"]
 
-    data = handshake_payload.get("data")
+    for key in candidate_keys:
+        value = payload.get(key)
+        if isinstance(value, str) and value:
+            return value
+
+    data = payload.get("data")
     if isinstance(data, dict):
-        candidate_keys = ["name", "experiment_name", "experimentName"]
         for key in candidate_keys:
             value = data.get(key)
             if isinstance(value, str) and value:
                 return value
 
     return None
-
-
-def _select_experiment(api_payload: Any, target_name: str | None) -> dict[str, Any] | None:
-    experiments: list[dict[str, Any]] = []
-
-    if isinstance(api_payload, list):
-        experiments = [item for item in api_payload if isinstance(item, dict)]
-    elif isinstance(api_payload, dict):
-        nested = api_payload.get("experiments")
-        if isinstance(nested, list):
-            experiments = [item for item in nested if isinstance(item, dict)]
-        else:
-            experiments = [api_payload]
-
-    if not experiments:
-        return None
-
-    if target_name:
-        for experiment in experiments:
-            if experiment.get("name") == target_name:
-                return experiment
-
-    return experiments[0]
 
 
 def _find_group_description(groups: Any, group_name: str) -> str:
@@ -153,17 +132,28 @@ async def _fetch_statsig_experiment(handshake_payload: dict[str, Any]) -> dict[s
         logger.warning("STATSIG_CONSOLE_API_KEY is not set; skipping console API fetch")
         return None
 
-    headers = {"STATSIG-API-KEY": api_key}
-    target_name = _extract_target_experiment_name(handshake_payload)
+    experiment_id = _extract_experiment_id(handshake_payload)
+    if not experiment_id:
+        logger.warning("No experiment id found in payload; skipping console API fetch")
+        return None
 
-    logger.info("Calling Statsig experiments API", extra={"url": STATSIG_EXPERIMENTS_URL, "target_name": target_name})
+    url = f"{STATSIG_EXPERIMENTS_BASE_URL}/{quote(experiment_id, safe='')}"
+    headers = {
+        "statsig-api-key": api_key,
+        "statsig-api-version": os.getenv("STATSIG_API_VERSION", "20240601"),
+        "content-type": "application/json",
+    }
+
+    logger.info("Calling Statsig experiment API", extra={"url": url, "experiment_id": experiment_id})
 
     async with httpx.AsyncClient(timeout=15.0) as client:
-        response = await client.get(STATSIG_EXPERIMENTS_URL, headers=headers)
+        response = await client.get(url, headers=headers)
         response.raise_for_status()
         api_payload: Any = response.json()
 
-    return _select_experiment(api_payload, target_name)
+    if isinstance(api_payload, dict):
+        return api_payload
+    return None
 
 
 async def _handle_statsig_webhook(request: Request, x_statsig_signature: str | None) -> JSONResponse:
