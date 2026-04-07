@@ -1,18 +1,11 @@
-FROM python:3.10-slim
-
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    POETRY_VIRTUALENVS_CREATE=false \
-    POETRY_NO_INTERACTION=1
+FROM python:3.12-slim
 
 WORKDIR /app
 
-RUN pip install --no-cache-dir poetry==2.1.4
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-COPY pyproject.toml ./
-RUN poetry install --only main
-
-COPY app.py ./
+COPY app.py .
 
 ENV PORT=8080
 EXPOSE 8080
