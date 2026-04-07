@@ -1,3 +1,5 @@
+import os
+
 from fastapi.testclient import TestClient
 
 import app as webhook_app
@@ -62,14 +64,23 @@ def test_handshake_fetches_experiment_and_prints_slack_message(capsys) -> None:
     assert "*Variation*" in console_output
 
 
-
 def test_slack_events_alias_works_for_handshake() -> None:
     response = client.post("/slack/events", json={"verification_code": "alias-1"})
     assert response.status_code == 200
     assert response.json() == {"verification_code": "alias-1"}
 
 
-def test_non_handshake_includes_debug_hint() -> None:
+def test_non_handshake_includes_optional_debug_hint() -> None:
     response = client.post("/slack/events", json={"type": "event", "data": {"a": 1}})
     assert response.status_code == 200
-    assert "No verification_code found" in response.json()["debug"]
+    assert response.json()["debug"] == "verification_code optional path used"
+
+
+def test_non_handshake_with_required_verification_code() -> None:
+    os.environ["REQUIRE_VERIFICATION_CODE"] = "true"
+    try:
+        response = client.post("/slack/events", json={"type": "event", "data": {"a": 1}})
+        assert response.status_code == 200
+        assert response.json()["debug"] == "verification_code required but missing"
+    finally:
+        os.environ.pop("REQUIRE_VERIFICATION_CODE", None)

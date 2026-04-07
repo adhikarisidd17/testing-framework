@@ -187,9 +187,23 @@ async def _handle_statsig_webhook(request: Request, x_statsig_signature: str | N
     logger.info("Received Statsig payload", extra={"payload": payload})
 
     verification_code = _extract_verification_code(payload)
+    require_verification_code = os.getenv("REQUIRE_VERIFICATION_CODE", "false").lower() == "true"
+
     if verification_code:
         print(f"Received Statsig verification_code: {verification_code}")
+    elif require_verification_code:
+        logger.warning(
+            "Request missing verification_code and REQUIRE_VERIFICATION_CODE=true; skipping Statsig API call",
+            extra={"path": request.url.path, "payload_keys": list(payload.keys())},
+        )
+    else:
+        logger.info(
+            "verification_code missing but optional; continuing with Statsig API call",
+            extra={"path": request.url.path, "payload_keys": list(payload.keys())},
+        )
 
+    should_fetch_experiment = bool(verification_code) or not require_verification_code
+    if should_fetch_experiment:
         try:
             experiment = await _fetch_statsig_experiment(payload)
             if experiment:
@@ -203,12 +217,8 @@ async def _handle_statsig_webhook(request: Request, x_statsig_signature: str | N
         except httpx.HTTPError as exc:
             logger.exception("Failed to fetch experiment data from Statsig console API: %s", exc)
 
+    if verification_code:
         return JSONResponse(status_code=200, content={"verification_code": verification_code})
-
-    logger.warning(
-        "Request did not include verification_code; Statsig API will not be called",
-        extra={"path": request.url.path, "payload_keys": list(payload.keys())},
-    )
 
     event_type = payload.get("type", "unknown")
     event_data = payload.get("data", {})
@@ -219,7 +229,7 @@ async def _handle_statsig_webhook(request: Request, x_statsig_signature: str | N
             "ok": True,
             "received_type": event_type,
             "received_data": event_data,
-            "debug": "No verification_code found; skipped Statsig experiments API call",
+            "debug": "verification_code optional path used" if not require_verification_code else "verification_code required but missing",
         },
     )
 

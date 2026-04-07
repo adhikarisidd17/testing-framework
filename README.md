@@ -42,6 +42,7 @@ When a Statsig handshake payload is received (`verification_code`), the service 
 - [Poetry](https://python-poetry.org/docs/#installation)
 - `STATSIG_CONSOLE_API_KEY` (required to fetch experiment details during handshake)
 - `STATSIG_PROJECT_ID` (optional, used to build experiment URL)
+- `REQUIRE_VERIFICATION_CODE` (optional, default `false`; when `true`, skips Statsig API call unless verification code exists)
 
 ### 1) Install dependencies
 
@@ -220,7 +221,7 @@ If you see `POST /slack/events 404`, your sender is targeting `/slack/events` wh
    - `Calling Statsig experiments API`
    - `--- Slack Message Preview ---`
 4. If API is not being called, check for warning:
-   - `Request did not include verification_code; Statsig API will not be called`
+   - `Request missing verification_code and REQUIRE_VERIFICATION_CODE=true; skipping Statsig API call`
 5. Ensure env vars are present:
    ```bash
    export STATSIG_CONSOLE_API_KEY="<your-read-only-key>"
