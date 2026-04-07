@@ -102,11 +102,16 @@ def test_extract_experiment_id_from_statsig_metadata_payload() -> None:
     payload = {
         "data": [
             {
+                "user": {"name": "Nicolaus Benadet", "email": "nicolaus.benadet@samblagroup.com"},
+                "timestamp": 1775551877023,
+                "eventName": "statsig::config_change",
                 "metadata": {
+                    "projectName": "Sambla Group AB",
                     "projectID": "jQzdlAawJ6o27HMDlUbxv",
                     "type": "Experiment",
                     "name": "webhook_test",
-                }
+                    "description": "Started Experiment",
+                },
             }
         ]
     }

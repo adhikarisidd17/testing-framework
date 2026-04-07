@@ -45,39 +45,46 @@ def _extract_verification_code(payload: dict[str, Any]) -> str | None:
 
 
 def _extract_experiment_id(payload: dict[str, Any]) -> str | None:
-    candidate_keys = ["id", "experiment_id", "experimentId", "name"]
+    """Extract experiment identifier from varied Statsig webhook payload shapes."""
 
-    for key in candidate_keys:
-        value = payload.get(key)
-        if isinstance(value, str) and value:
-            return value
+    preferred_keys = {"experimentID", "experimentId", "experiment_id", "id"}
 
-    data = payload.get("data")
-    if isinstance(data, dict):
-        for key in candidate_keys:
-            value = data.get(key)
-            if isinstance(value, str) and value:
-                return value
+    def walk(value: Any) -> str | None:
+        if isinstance(value, dict):
+            # 1) Prefer explicit id-like keys first.
+            for key in preferred_keys:
+                candidate = value.get(key)
+                if isinstance(candidate, str) and candidate:
+                    return candidate
 
-    # Statsig event payloads can be arrays under `data` with metadata block.
-    if isinstance(data, list):
-        for event in data:
-            if not isinstance(event, dict):
-                continue
-            metadata = event.get("metadata")
-            if not isinstance(metadata, dict):
-                continue
-            # Prefer an explicit experiment identifier when present.
-            explicit_id = metadata.get("experimentID") or metadata.get("experimentId") or metadata.get("id")
-            if isinstance(explicit_id, str) and explicit_id:
-                return explicit_id
+            # 2) Statsig metadata payload fallback: metadata.name.
+            metadata = value.get("metadata")
+            if isinstance(metadata, dict):
+                meta_name = metadata.get("name")
+                if isinstance(meta_name, str) and meta_name:
+                    return meta_name
 
-            # Fallback to metadata.name, e.g. `webhook_test`.
-            event_name = metadata.get("name")
-            if isinstance(event_name, str) and event_name:
-                return event_name
+            # 3) Generic name fallback when this object clearly references experiments.
+            value_type = value.get("type") or value.get("eventName")
+            if isinstance(value_type, str) and "experiment" in value_type.lower():
+                name_candidate = value.get("name")
+                if isinstance(name_candidate, str) and name_candidate:
+                    return name_candidate
 
-    return None
+            for nested in value.values():
+                found = walk(nested)
+                if found:
+                    return found
+
+        elif isinstance(value, list):
+            for item in value:
+                found = walk(item)
+                if found:
+                    return found
+
+        return None
+
+    return walk(payload)
 
 
 def _find_group_description(groups: Any, group_name: str) -> str:
@@ -176,6 +183,7 @@ async def _fetch_statsig_experiment(handshake_payload: dict[str, Any]) -> dict[s
         return None
 
     experiment_id = _extract_experiment_id(handshake_payload)
+    logger.info("Extracted experiment id from payload", extra={"experiment_id": experiment_id})
     if not experiment_id:
         logger.warning("No experiment id found in payload; skipping console API fetch")
         return None
