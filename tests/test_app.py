@@ -51,6 +51,9 @@ def test_handshake_fetches_experiment_and_prints_slack_message(capsys) -> None:
         }
 
     webhook_app._fetch_statsig_experiment = fake_fetch
+    async def fake_send(_payload):
+        return False
+    webhook_app._send_slack_message = fake_send
 
     response = client.post("/statsig/webhook", json={"verification_code": "v-123"})
     assert response.status_code == 200
@@ -60,10 +63,11 @@ def test_handshake_fetches_experiment_and_prints_slack_message(capsys) -> None:
     assert "--- Slack Message Preview ---" in console_output
     assert ":rocket: Experiment Started :rocket:" in console_output
     assert '"type": "header"' in console_output
+    assert '"text": "Experiment started: new_homepage"' in console_output
     assert '"action_id": "view_experiment"' in console_output
-    assert "*Hypothesis:* submission." in console_output
-    assert "*Baseline*" in console_output
-    assert "*Variation*" in console_output
+    assert "Hypothesis: submission." in console_output
+    assert "Baseline" in console_output
+    assert "Variation" in console_output
 
 
 def test_format_slack_message_returns_block_kit_structure() -> None:
@@ -81,14 +85,15 @@ def test_format_slack_message_returns_block_kit_structure() -> None:
     message = webhook_app._format_slack_message(experiment, "jQzdlAawJ6o27HMDlUbxv")
     blocks = message["blocks"]
 
+    assert message["text"] == "Experiment started: expmt_usp_submit"
     assert blocks[0]["type"] == "header"
     assert blocks[0]["text"]["text"] == ":rocket: Experiment Started :rocket:"
     assert blocks[1]["text"]["text"] == "expmt_usp_submit"
-    assert "*Hypothesis:* submission." in blocks[2]["text"]["text"]
-    assert "*Primary metric*: Checkout completion" in blocks[2]["text"]["text"]
-    assert "*Team*: UCL" in blocks[2]["text"]["text"]
-    assert blocks[4]["text"]["text"] == "*Baseline*\nControl description"
-    assert blocks[5]["text"]["text"] == "*Variation*\nTest description"
+    assert "Hypothesis: submission." in blocks[2]["text"]["text"]
+    assert "Primary metric: Checkout completion" in blocks[2]["text"]["text"]
+    assert "Team: UCL" in blocks[2]["text"]["text"]
+    assert blocks[4]["text"]["text"] == "Baseline\nControl description"
+    assert blocks[5]["text"]["text"] == "Variation\nTest description"
     assert (
         blocks[7]["elements"][0]["url"]
         == "https://console.statsig.com/jQzdlAawJ6o27HMDlUbxv/experiments/expmt_usp_submit/summary"
