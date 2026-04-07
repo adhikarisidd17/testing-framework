@@ -58,10 +58,41 @@ def test_handshake_fetches_experiment_and_prints_slack_message(capsys) -> None:
 
     console_output = capsys.readouterr().out
     assert "--- Slack Message Preview ---" in console_output
-    assert "🚀 Experiment Started 🚀" in console_output
+    assert ":rocket: Experiment Started :rocket:" in console_output
+    assert '"type": "header"' in console_output
+    assert '"action_id": "view_experiment"' in console_output
     assert "*Hypothesis:* submission." in console_output
     assert "*Baseline*" in console_output
     assert "*Variation*" in console_output
+
+
+def test_format_slack_message_returns_block_kit_structure() -> None:
+    experiment = {
+        "name": "expmt_usp_submit",
+        "hypothesis": "submission.`",
+        "primaryMetrics": [{"name": "Checkout completion"}],
+        "team": "UCL",
+        "groups": [
+            {"name": "Control", "description": "Control description"},
+            {"name": "Test", "description": "Test description"},
+        ],
+    }
+
+    message = webhook_app._format_slack_message(experiment, "jQzdlAawJ6o27HMDlUbxv")
+    blocks = message["blocks"]
+
+    assert blocks[0]["type"] == "header"
+    assert blocks[0]["text"]["text"] == ":rocket: Experiment Started :rocket:"
+    assert blocks[1]["text"]["text"] == "expmt_usp_submit"
+    assert "*Hypothesis:* submission." in blocks[2]["text"]["text"]
+    assert "*Primary metric*: Checkout completion" in blocks[2]["text"]["text"]
+    assert "*Team*: UCL" in blocks[2]["text"]["text"]
+    assert blocks[4]["text"]["text"] == "*Baseline*\nControl description"
+    assert blocks[5]["text"]["text"] == "*Variation*\nTest description"
+    assert (
+        blocks[7]["elements"][0]["url"]
+        == "https://console.statsig.com/jQzdlAawJ6o27HMDlUbxv/experiments/expmt_usp_submit/summary"
+    )
 
 
 def test_slack_events_alias_works_for_handshake() -> None:

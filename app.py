@@ -142,7 +142,7 @@ def _normalize_experiment_payload(raw: dict[str, Any]) -> dict[str, Any]:
 
     return normalized
 
-def _format_slack_message(experiment: dict[str, Any], project_id: str | None) -> str:
+def _format_slack_message(experiment: dict[str, Any], project_id: str | None) -> dict[str, Any]:
     name = experiment.get("name") if isinstance(experiment.get("name"), str) else "N/A"
     hypothesis = _sanitize_hypothesis(experiment.get("hypothesis"))
     team = experiment.get("team") if isinstance(experiment.get("team"), str) else "N/A"
@@ -162,18 +162,68 @@ def _format_slack_message(experiment: dict[str, Any], project_id: str | None) ->
 
     experiment_url = _build_experiment_url(project_id, name)
 
-    return (
-        "🚀 Experiment Started 🚀\n\n"
-        f"*Experiment Name*\n{name}\n\n"
-        f"*Hypothesis:* {hypothesis}\n\n"
-        f"*Primary metric*: {primary_metric_name}\\\n\n"
-        f"*Team*: {team}\n\n"
-        "*Baseline*\\\n\n"
-        f"{control_description}\n\n"
-        "*Variation*\\\n\n"
-        f"{test_description}\n\n"
-        f"View Experiment → {experiment_url}"
-    )
+    return {
+        "blocks": [
+            {
+                "type": "header",
+                "text": {
+                    "type": "plain_text",
+                    "text": ":rocket: Experiment Started :rocket:",
+                    "emoji": True,
+                },
+            },
+            {
+                "type": "header",
+                "text": {
+                    "type": "plain_text",
+                    "text": name,
+                    "emoji": True,
+                },
+            },
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": (
+                        f"*Hypothesis:* {hypothesis}\n"
+                        f"*Primary metric*: {primary_metric_name}\n"
+                        f"*Team*: {team}"
+                    ),
+                },
+            },
+            {"type": "divider"},
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"*Baseline*\n{control_description}",
+                },
+            },
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"*Variation*\n{test_description}",
+                },
+            },
+            {"type": "divider"},
+            {
+                "type": "actions",
+                "elements": [
+                    {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": "View Experiment",
+                            "emoji": True,
+                        },
+                        "url": experiment_url,
+                        "action_id": "view_experiment",
+                    }
+                ],
+            },
+        ]
+    }
 
 
 async def _fetch_statsig_experiment(handshake_payload: dict[str, Any]) -> dict[str, Any] | None:
@@ -254,7 +304,7 @@ async def _handle_statsig_webhook(request: Request, x_statsig_signature: str | N
                 project_id = os.getenv("STATSIG_PROJECT_ID")
                 slack_message = _format_slack_message(experiment, project_id)
                 print("\n--- Slack Message Preview ---")
-                print(slack_message)
+                print(json.dumps(slack_message, indent=2, default=str))
                 print("--- End Slack Message Preview ---\n")
             else:
                 logger.warning("No experiment data available from Statsig console API")
