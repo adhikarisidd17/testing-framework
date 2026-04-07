@@ -161,8 +161,8 @@ def _format_slack_message(experiment: dict[str, Any], project_id: str | None = N
     experiment_url = _build_experiment_url(resolved_project_id, name)
 
     hypothesis_text = (
-        f"Hypothesis: {hypothesis}\n\n"
-        f"Primary metric: {metric_name}\n"
+        f"*Hypothesis:* {hypothesis}\n\n"
+        f"*Primary metric:* {metric_name}\n"
         f"Team: {team}"
     )
 
@@ -176,8 +176,8 @@ def _format_slack_message(experiment: dict[str, Any], project_id: str | None = N
             {"type": "header", "text": {"type": "plain_text", "text": name, "emoji": True}},
             {"type": "section", "text": {"type": "mrkdwn", "text": hypothesis_text}},
             {"type": "divider"},
-            {"type": "section", "text": {"type": "mrkdwn", "text": f"Baseline\n{baseline}"}},
-            {"type": "section", "text": {"type": "mrkdwn", "text": f"Variation\n{variation}"}},
+            {"type": "section", "text": {"type": "mrkdwn", "text": f"*Baseline*\n{baseline}"}},
+            {"type": "section", "text": {"type": "mrkdwn", "text": f"*Variation*\n{variation}"}},
             {"type": "divider"},
             {
                 "type": "actions",

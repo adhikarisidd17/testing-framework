@@ -89,11 +89,11 @@ def test_format_slack_message_returns_block_kit_structure() -> None:
     assert blocks[0]["type"] == "header"
     assert blocks[0]["text"]["text"] == ":rocket: Experiment Started :rocket:"
     assert blocks[1]["text"]["text"] == "expmt_usp_submit"
-    assert "Hypothesis: submission." in blocks[2]["text"]["text"]
-    assert "Primary metric: Checkout completion" in blocks[2]["text"]["text"]
+    assert "*Hypothesis:* submission." in blocks[2]["text"]["text"]
+    assert "*Primary metric:* Checkout completion" in blocks[2]["text"]["text"]
     assert "Team: UCL" in blocks[2]["text"]["text"]
-    assert blocks[4]["text"]["text"] == "Baseline\nControl description"
-    assert blocks[5]["text"]["text"] == "Variation\nTest description"
+    assert blocks[4]["text"]["text"] == "*Baseline*\nControl description"
+    assert blocks[5]["text"]["text"] == "*Variation*\nTest description"
     assert (
         blocks[7]["elements"][0]["url"]
         == "https://console.statsig.com/jQzdlAawJ6o27HMDlUbxv/experiments/expmt_usp_submit/summary"
