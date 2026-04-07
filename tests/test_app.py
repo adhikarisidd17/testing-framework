@@ -65,9 +65,9 @@ def test_handshake_fetches_experiment_and_prints_slack_message(capsys) -> None:
     assert '"type": "header"' in console_output
     assert '"text": "Experiment started: new_homepage"' in console_output
     assert '"action_id": "view_experiment"' in console_output
-    assert "*Hypothesis:* submission." in console_output
-    assert "*Baseline*" in console_output
-    assert "*Variation*" in console_output
+    assert "Hypothesis: submission." in console_output
+    assert "Baseline" in console_output
+    assert "Variation" in console_output
 
 
 def test_format_slack_message_returns_block_kit_structure() -> None:
