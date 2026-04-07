@@ -82,6 +82,7 @@ async def statsig_webhook(
     # Event path: parse and log the event data from Statsig.
     event_type = payload.get("type", "unknown")
     event_data = payload.get("data", {})
+    logger.info(f"Received Statsig event of type '{event_type}' with data: {event_data}")
 
     logger.info("Received Statsig event", extra={"event_type": event_type, "event_data": event_data})
 
