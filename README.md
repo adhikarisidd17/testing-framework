@@ -19,6 +19,17 @@ This service exposes a public webhook endpoint that:
 - `GET /healthz`
   - Health check endpoint.
 
+
+### Handshake follow-up flow
+
+When a Statsig handshake payload is received (`verification_code`), the service now:
+
+1. Extracts request content.
+2. Calls `https://statsigapi.net/console/v1/experiments/` (if `STATSIG_CONSOLE_API_KEY` is set).
+3. Builds a Slack-formatted message from experiment data (Control/Test groups + primary metric).
+4. Prints the Slack message to console (preview only, no channel send).
+5. Returns `{ "verification_code": "..." }` to complete handshake.
+
 ---
 
 ## Run instructions
@@ -27,6 +38,8 @@ This service exposes a public webhook endpoint that:
 
 - Python 3.10+
 - [Poetry](https://python-poetry.org/docs/#installation)
+- `STATSIG_CONSOLE_API_KEY` (required to fetch experiment details during handshake)
+- `STATSIG_PROJECT_ID` (optional, used to build experiment URL)
 
 ### 1) Install dependencies
 

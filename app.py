@@ -4,19 +4,18 @@ import json
 import logging
 import os
 from typing import Any
+from urllib.parse import quote
 
+import httpx
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
 
 app = FastAPI(title="Statsig Webhook Receiver", version="1.0.0")
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("statsig-webhook")
 
-
-class HandshakePayload(BaseModel):
-    verification_code: str
+STATSIG_EXPERIMENTS_URL = "https://statsigapi.net/console/v1/experiments/"
 
 
 def _load_secret() -> str:
@@ -43,6 +42,127 @@ def _extract_verification_code(payload: dict[str, Any]) -> str | None:
             return nested
 
     return None
+
+
+def _extract_target_experiment_name(handshake_payload: dict[str, Any]) -> str | None:
+    top_level_name = handshake_payload.get("name")
+    if isinstance(top_level_name, str) and top_level_name:
+        return top_level_name
+
+    data = handshake_payload.get("data")
+    if isinstance(data, dict):
+        candidate_keys = ["name", "experiment_name", "experimentName"]
+        for key in candidate_keys:
+            value = data.get(key)
+            if isinstance(value, str) and value:
+                return value
+
+    return None
+
+
+def _select_experiment(api_payload: Any, target_name: str | None) -> dict[str, Any] | None:
+    experiments: list[dict[str, Any]] = []
+
+    if isinstance(api_payload, list):
+        experiments = [item for item in api_payload if isinstance(item, dict)]
+    elif isinstance(api_payload, dict):
+        nested = api_payload.get("experiments")
+        if isinstance(nested, list):
+            experiments = [item for item in nested if isinstance(item, dict)]
+        else:
+            experiments = [api_payload]
+
+    if not experiments:
+        return None
+
+    if target_name:
+        for experiment in experiments:
+            if experiment.get("name") == target_name:
+                return experiment
+
+    return experiments[0]
+
+
+def _find_group_description(groups: Any, group_name: str) -> str:
+    if not isinstance(groups, list):
+        return "N/A"
+
+    for group in groups:
+        if not isinstance(group, dict):
+            continue
+        if group.get("name") == group_name:
+            description = group.get("description")
+            if isinstance(description, str) and description:
+                return description
+            return "N/A"
+
+    return "N/A"
+
+
+def _build_experiment_url(project_id: str | None, experiment_name: str) -> str:
+    safe_name = quote(experiment_name, safe="")
+    if project_id:
+        return f"https://console.statsig.com/{project_id}/experiments/{safe_name}/summary"
+    return f"https://console.statsig.com/PROJECT_ID/experiments/{safe_name}/summary"
+
+
+def _sanitize_hypothesis(hypothesis: Any) -> str:
+    if not isinstance(hypothesis, str) or not hypothesis:
+        return "N/A"
+    # Known issue workaround: strip stray backticks in hypothesis text.
+    return hypothesis.replace("`", "")
+
+
+def _format_slack_message(experiment: dict[str, Any], project_id: str | None) -> str:
+    name = experiment.get("name") if isinstance(experiment.get("name"), str) else "N/A"
+    hypothesis = _sanitize_hypothesis(experiment.get("hypothesis"))
+    team = experiment.get("team") if isinstance(experiment.get("team"), str) else "N/A"
+
+    primary_metrics = experiment.get("primaryMetrics")
+    primary_metric_name = "N/A"
+    if isinstance(primary_metrics, list) and primary_metrics:
+        first_metric = primary_metrics[0]
+        if isinstance(first_metric, dict):
+            metric_name = first_metric.get("name")
+            if isinstance(metric_name, str) and metric_name:
+                primary_metric_name = metric_name
+
+    groups = experiment.get("groups")
+    control_description = _find_group_description(groups, "Control")
+    test_description = _find_group_description(groups, "Test")
+
+    experiment_url = _build_experiment_url(project_id, name)
+
+    return (
+        "🚀 Experiment Started 🚀\n\n"
+        f"*Experiment Name*\n{name}\n\n"
+        f"*Hypothesis:* {hypothesis}\n\n"
+        f"*Primary metric*: {primary_metric_name}\\\n\n"
+        f"*Team*: {team}\n\n"
+        "*Baseline*\\\n\n"
+        f"{control_description}\n\n"
+        "*Variation*\\\n\n"
+        f"{test_description}\n\n"
+        f"View Experiment → {experiment_url}"
+    )
+
+
+async def _fetch_statsig_experiment(handshake_payload: dict[str, Any]) -> dict[str, Any] | None:
+    api_key = os.getenv("STATSIG_CONSOLE_API_KEY")
+    if not api_key:
+        logger.warning("STATSIG_CONSOLE_API_KEY is not set; skipping console API fetch")
+        return None
+
+    headers = {"STATSIG-API-KEY": api_key}
+    target_name = _extract_target_experiment_name(handshake_payload)
+
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        response = await client.get(STATSIG_EXPERIMENTS_URL, headers=headers)
+        response.raise_for_status()
+        api_payload: Any = response.json()
+
+    return _select_experiment(api_payload, target_name)
+
 
 @app.get("/healthz")
 def healthz() -> dict[str, str]:
@@ -72,17 +192,29 @@ async def statsig_webhook(
 
     logger.info("Received Statsig payload", extra={"payload": payload})
 
-    # Handshake path: extract and echo verification_code if present.
+    # Handshake path: extract payload fields first, then echo verification code.
     verification_code = _extract_verification_code(payload)
     if verification_code:
         print(f"Received Statsig verification_code: {verification_code}")
-        logger.info("Received Statsig verification_code", extra={"verification_code": verification_code})
+
+        try:
+            experiment = await _fetch_statsig_experiment(payload)
+            if experiment:
+                project_id = os.getenv("STATSIG_PROJECT_ID")
+                slack_message = _format_slack_message(experiment, project_id)
+                print("\n--- Slack Message Preview ---")
+                print(slack_message)
+                print("--- End Slack Message Preview ---\n")
+            else:
+                logger.warning("No experiment data available from Statsig console API")
+        except httpx.HTTPError as exc:
+            logger.exception("Failed to fetch experiment data from Statsig console API: %s", exc)
+
         return JSONResponse(status_code=200, content={"verification_code": verification_code})
 
     # Event path: parse and log the event data from Statsig.
     event_type = payload.get("type", "unknown")
     event_data = payload.get("data", {})
-    logger.info(f"Received Statsig event of type '{event_type}' with data: {event_data}")
 
     logger.info("Received Statsig event", extra={"event_type": event_type, "event_data": event_data})
 
