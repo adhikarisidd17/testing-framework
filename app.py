@@ -156,6 +156,8 @@ async def _fetch_statsig_experiment(handshake_payload: dict[str, Any]) -> dict[s
     headers = {"STATSIG-API-KEY": api_key}
     target_name = _extract_target_experiment_name(handshake_payload)
 
+    logger.info("Calling Statsig experiments API", extra={"url": STATSIG_EXPERIMENTS_URL, "target_name": target_name})
+
     async with httpx.AsyncClient(timeout=15.0) as client:
         response = await client.get(STATSIG_EXPERIMENTS_URL, headers=headers)
         response.raise_for_status()
@@ -164,17 +166,9 @@ async def _fetch_statsig_experiment(handshake_payload: dict[str, Any]) -> dict[s
     return _select_experiment(api_payload, target_name)
 
 
-@app.get("/healthz")
-def healthz() -> dict[str, str]:
-    return {"status": "ok"}
-
-
-@app.post("/statsig/webhook")
-async def statsig_webhook(
-    request: Request,
-    x_statsig_signature: str | None = Header(default=None),
-) -> JSONResponse:
+async def _handle_statsig_webhook(request: Request, x_statsig_signature: str | None) -> JSONResponse:
     raw_body = await request.body()
+    logger.info("Incoming webhook", extra={"path": request.url.path, "content_length": len(raw_body)})
 
     # Optional request signing verification.
     require_signature = os.getenv("REQUIRE_SIGNATURE", "false").lower() == "true"
@@ -192,7 +186,6 @@ async def statsig_webhook(
 
     logger.info("Received Statsig payload", extra={"payload": payload})
 
-    # Handshake path: extract payload fields first, then echo verification code.
     verification_code = _extract_verification_code(payload)
     if verification_code:
         print(f"Received Statsig verification_code: {verification_code}")
@@ -212,11 +205,13 @@ async def statsig_webhook(
 
         return JSONResponse(status_code=200, content={"verification_code": verification_code})
 
-    # Event path: parse and log the event data from Statsig.
+    logger.warning(
+        "Request did not include verification_code; Statsig API will not be called",
+        extra={"path": request.url.path, "payload_keys": list(payload.keys())},
+    )
+
     event_type = payload.get("type", "unknown")
     event_data = payload.get("data", {})
-
-    logger.info("Received Statsig event", extra={"event_type": event_type, "event_data": event_data})
 
     return JSONResponse(
         status_code=200,
@@ -224,5 +219,28 @@ async def statsig_webhook(
             "ok": True,
             "received_type": event_type,
             "received_data": event_data,
+            "debug": "No verification_code found; skipped Statsig experiments API call",
         },
     )
+
+
+@app.get("/healthz")
+def healthz() -> dict[str, str]:
+    return {"status": "ok"}
+
+
+@app.post("/statsig/webhook")
+async def statsig_webhook(
+    request: Request,
+    x_statsig_signature: str | None = Header(default=None),
+) -> JSONResponse:
+    return await _handle_statsig_webhook(request, x_statsig_signature)
+
+
+@app.post("/slack/events")
+async def slack_events_alias(
+    request: Request,
+    x_statsig_signature: str | None = Header(default=None),
+) -> JSONResponse:
+    """Alias endpoint for integrations that POST to /slack/events."""
+    return await _handle_statsig_webhook(request, x_statsig_signature)

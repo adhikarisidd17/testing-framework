@@ -60,3 +60,16 @@ def test_handshake_fetches_experiment_and_prints_slack_message(capsys) -> None:
     assert "*Hypothesis:* submission." in console_output
     assert "*Baseline*" in console_output
     assert "*Variation*" in console_output
+
+
+
+def test_slack_events_alias_works_for_handshake() -> None:
+    response = client.post("/slack/events", json={"verification_code": "alias-1"})
+    assert response.status_code == 200
+    assert response.json() == {"verification_code": "alias-1"}
+
+
+def test_non_handshake_includes_debug_hint() -> None:
+    response = client.post("/slack/events", json={"type": "event", "data": {"a": 1}})
+    assert response.status_code == 200
+    assert "No verification_code found" in response.json()["debug"]

@@ -19,6 +19,8 @@ This service exposes a public webhook endpoint that:
 - `GET /healthz`
   - Health check endpoint.
 
+- `POST /slack/events`
+  - Alias of `/statsig/webhook` to avoid 404 when an integration is configured with `/slack/events`.
 
 ### Handshake follow-up flow
 
@@ -192,3 +194,36 @@ REQUIRE_SIGNATURE=true STATSIG_WEBHOOK_SECRET=dev-secret \
 ```bash
 poetry run pytest -q
 ```
+
+
+---
+
+## Debugging
+
+If you see `POST /slack/events 404`, your sender is targeting `/slack/events` while only `/statsig/webhook` existed before. This project now supports both paths.
+
+### Recommended debug checklist
+
+1. Confirm server startup logs and endpoint path:
+   ```bash
+   poetry run uvicorn app:app --reload --host 0.0.0.0 --port 8080
+   ```
+2. Reproduce with handshake payload and verify code echo:
+   ```bash
+   curl -X POST http://localhost:8080/slack/events \
+     -H "Content-Type: application/json" \
+     -d '{"verification_code":"debug-123"}'
+   ```
+3. Check console logs for:
+   - `Incoming webhook`
+   - `Received Statsig payload`
+   - `Calling Statsig experiments API`
+   - `--- Slack Message Preview ---`
+4. If API is not being called, check for warning:
+   - `Request did not include verification_code; Statsig API will not be called`
+5. Ensure env vars are present:
+   ```bash
+   export STATSIG_CONSOLE_API_KEY="<your-read-only-key>"
+   export STATSIG_PROJECT_ID="<your-project-id>"
+   ```
+
